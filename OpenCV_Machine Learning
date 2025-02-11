@@ -1,0 +1,64 @@
+#Machine Learning lv2가 안될경우 groups 인자를 제거하는 코드를 추가시킨 빌드
+from keras.models import load_model
+from keras.layers import DepthwiseConv2D  # 기본 DepthwiseConv2D 임포트
+import cv2
+import numpy as np
+
+# Disable scientific notation for clarity
+np.set_printoptions(suppress=True)
+
+# 커스텀 DepthwiseConv2D 클래스 정의 (groups 인자 제거)
+class CustomDepthwiseConv2D(DepthwiseConv2D):
+    def __init__(self, *args, **kwargs):
+        # 전달된 kwargs에서 'groups' 키를 제거합니다.
+        kwargs.pop('groups', None)
+        super().__init__(*args, **kwargs)
+
+# 모델 로드 (custom_objects에 커스텀 클래스 지정)
+model = load_model("keras_Model.h5", compile=False,
+                   custom_objects={'DepthwiseConv2D': CustomDepthwiseConv2D})
+
+# Load the labels
+class_names = open("labels.txt", "r").readlines()
+
+# CAMERA can be 0 or 1 based on the default camera of your computer
+camera = cv2.VideoCapture(0)
+
+while True:
+    # Grab the webcamera's image.
+    ret, image = camera.read()
+    if not ret:
+        print("웹캠에서 이미지를 가져오지 못했습니다.")
+        break
+
+    # Resize the raw image into (224-height, 224-width) pixels
+    image = cv2.resize(image, (224, 224), interpolation=cv2.INTER_AREA)
+
+    # Show the image in a window
+    cv2.imshow("Webcam Image", image)
+
+    # Make the image a numpy array and reshape it to the model's input shape.
+    image_array = np.asarray(image, dtype=np.float32).reshape(1, 224, 224, 3)
+
+    # Normalize the image array
+    image_array = (image_array / 127.5) - 1
+
+    # Predict with the model
+    prediction = model.predict(image_array)
+    index = np.argmax(prediction)
+    class_name = class_names[index]
+    confidence_score = prediction[0][index]
+
+    # Print prediction and confidence score
+    # class_name[2:]는 라벨 파일에 인덱스나 불필요한 문자가 포함된 경우 잘라내기 위한 처리입니다.
+    print("Class:", class_name[2:], end=" ")
+    print("Confidence Score:", str(np.round(confidence_score * 100))[:-2], "%")
+
+    # Listen to the keyboard for presses.
+    keyboard_input = cv2.waitKey(1)
+    # 27 is the ASCII for the esc key on your keyboard.
+    if keyboard_input == 27:
+        break
+
+camera.release()
+cv2.destroyAllWindows()
